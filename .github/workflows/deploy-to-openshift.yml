@@ -1,0 +1,47 @@
+name: Build and Push to OpenShift
+
+on:
+  push:
+    branches:
+      - main  # This will trigger the workflow on every push to the main branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Log in to OpenShift
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz
+          tar -xvf oc.tar.gz
+          sudo mv oc /usr/local/bin/
+          echo $OPENSHIFT_TOKEN | oc login --server=$OPENSHIFT_SERVER --token=- --insecure-skip-tls-verify
+        
+      - name: Build Docker image
+        run: |
+          docker build -t ${IMAGE_NAME} .
+
+      - name: Tag Docker image for OpenShift
+        env:
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_PROJECT: ${{ secrets.OPENSHIFT_PROJECT }}
+        run: |
+          IMAGE_TAG="${OPENSHIFT_SERVER}/${OPENSHIFT_PROJECT}/${IMAGE_NAME}:latest"
+          docker tag ${IMAGE_NAME} ${IMAGE_TAG}
+          echo "Tagged image as ${IMAGE_TAG}"
+
+      - name: Push Docker image to OpenShift registry
+        env:
+          IMAGE_NAME: ${{ secrets.IMAGE_NAME }}
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_PROJECT: ${{ secrets.OPENSHIFT_PROJECT }}
+        run: |
+          IMAGE_TAG="${OPENSHIFT_SERVER}/${OPENSHIFT_PROJECT}/${IMAGE_NAME}:latest"
+          docker push ${IMAGE_TAG}
